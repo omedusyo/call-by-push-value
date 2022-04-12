@@ -44,21 +44,21 @@ emptyEnv =
     Dict.empty
 
 
-insertEnv : ValueNameIntro -> Value -> Env -> Env
-insertEnv valueIntro val env =
+insertEnv : ValueName -> TypedValue -> Env -> Env
+insertEnv valueName tvalue env =
     env
-        |> Dict.update valueIntro.name
+        |> Dict.update valueName
             (\maybeValues ->
                 case maybeValues of
                     Just values ->
-                        Just ({ value = val, type_ = valueIntro.type_ } :: values)
+                        Just (tvalue :: values)
 
                     Nothing ->
-                        Just [ { value = val, type_ = valueIntro.type_ } ]
+                        Just [ tvalue ]
             )
 
 
-insertsEnv : List ( ValueNameIntro, Value ) -> Env -> Env
+insertsEnv : List ( ValueName, TypedValue ) -> Env -> Env
 insertsEnv bindings env =
     List.foldl (\( varName, val ) envState -> insertEnv varName val envState)
         env
@@ -73,6 +73,21 @@ getEnv valName env =
 
         Nothing ->
             Debug.todo (String.concat [ "Lookup Error: unknown value name `", valName, "`" ])
+
+
+extractTensorFromValue : Value -> Env -> ( TypedValue, TypedValue )
+extractTensorFromValue value env =
+    case value of
+        Calculus.ValueNameUse name ->
+            extractTensor (env |> getEnv name)
+
+        Calculus.TensorProductPair value0 value1 ->
+            ( typedValue value0 (env |> typeCheckValue value0)
+            , typedValue value1 (env |> typeCheckValue value1)
+            )
+
+        _ ->
+            Debug.todo "Extraction Error: you are trying to extract from a value of type `TensorProduct`"
 
 
 extractTensor : TypedValue -> ( TypedValue, TypedValue )
@@ -155,3 +170,49 @@ type alias State =
     , stack : Stack
     , currentComputation : Computation
     }
+
+
+
+-- ===Type Checking===
+
+
+typeCheckValue : Value -> Env -> ValueType
+typeCheckValue value env =
+    case value of
+        Calculus.ValueNameUse valueName ->
+            (env |> getEnv valueName).type_
+
+        Calculus.TensorProductPair value0 value1 ->
+            Calculus.TensorProduct (env |> typeCheckValue value0) (env |> typeCheckValue value1)
+
+        _ ->
+            Debug.todo ""
+
+
+typeCheckComputation : Env -> Computation -> ComputationType
+typeCheckComputation env computation =
+    Debug.todo ""
+
+
+
+-- ===Small Step Evaluator===
+
+
+step : Computation -> Env -> Stack -> State
+step currentComputation env stack =
+    case currentComputation of
+        Calculus.MatchTensorProduct value body ->
+            let
+                ( typedValue0, typedValue1 ) =
+                    env |> extractTensorFromValue value
+            in
+            step
+                body.computation
+                (env
+                    |> insertEnv body.var0 typedValue0
+                    |> insertEnv body.var1 typedValue1
+                )
+                stack
+
+        _ ->
+            Debug.todo ""

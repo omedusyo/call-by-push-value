@@ -14,7 +14,7 @@ import Calculus exposing (..)
 example0 =
     -- x <- pop;
     -- return(x)
-    Pop { var = { name = "x", type_ = BoolType }, body = Return (ValueNameUse "x") }
+    Pop { var = { name = "x", type_ = BoolType }, computation = Return (ValueNameUse "x") }
 
 
 
@@ -32,14 +32,14 @@ example0 =
 example1 =
     Pop
         { var = { name = "pair", type_ = TensorProduct BoolType BoolType }
-        , body =
+        , computation =
             MatchTensorProduct (ValueNameUse "pair")
-                { var0 = { name = "x", type_ = BoolType }
-                , var1 = { name = "y", type_ = BoolType }
-                , body =
+                { var0 = "x"
+                , var1 = "y"
+                , computation =
                     MatchBool (ValueNameUse "x")
-                        { body = Return (ValueNameUse "y") }
-                        { body = Return FalseConstant }
+                        { computation = Return (ValueNameUse "y") }
+                        { computation = Return FalseConstant }
                 }
         }
 
@@ -57,14 +57,14 @@ example1 =
 example2 =
     Pop
         { var = { name = "pair", type_ = TensorProduct BoolType BoolType }
-        , body =
+        , computation =
             MatchTensorProduct (ValueNameUse "pair")
-                { var0 = { name = "x", type_ = BoolType }
-                , var1 = { name = "y", type_ = BoolType }
-                , body =
+                { var0 = "x"
+                , var1 = "y"
+                , computation =
                     MatchBool (ValueNameUse "x")
-                        { body = Return TrueConstant }
-                        { body = Return (ValueNameUse "y") }
+                        { computation = Return TrueConstant }
+                        { computation = Return (ValueNameUse "y") }
                 }
         }
 
@@ -82,10 +82,10 @@ example2 =
 example3 =
     Pop
         { var = { name = "b", type_ = BoolType }
-        , body =
+        , computation =
             MatchBool (ValueNameUse "b")
-                { body = Return TrueConstant }
-                { body = Return FalseConstant }
+                { computation = Return TrueConstant }
+                { computation = Return FalseConstant }
         }
 
 
@@ -102,13 +102,13 @@ example3 =
 example4 =
     Pop
         { var = { name = "f", type_ = Frozen (Arrow (TensorProduct (AtomicValueType "A") (AtomicValueType "B")) (AtomicComputationType "T")) }
-        , body =
+        , computation =
             Pop
                 { var = { name = "a", type_ = AtomicValueType "A" }
-                , body =
+                , computation =
                     Pop
                         { var = { name = "b", type_ = AtomicValueType "B" }
-                        , body =
+                        , computation =
                             Push
                                 (TensorProductPair (ValueNameUse "a") (ValueNameUse "b"))
                                 (Force (ValueNameUse "f"))

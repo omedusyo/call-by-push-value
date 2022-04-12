@@ -69,17 +69,19 @@ type Value
 type Computation
     = --===value elim===
       -- tensor value type elim
-      MatchTensorProduct Value { var0 : ValueNameIntro, var1 : ValueNameIntro, body : Computation }
+      MatchTensorProduct Value { var0 : ValueName, var1 : ValueName, computation : Computation }
       -- sum type elim
-    | MatchSum Value { var : ValueNameIntro, body : Computation } { var : ValueNameIntro, body : Computation }
+      -- TODO: Change from `ValueNameIntro` to `ValueName`?
+    | MatchSum Value { var : ValueNameIntro, computation : Computation } { var : ValueNameIntro, computation : Computation }
     | MatchZero { body : Computation }
       -- freeze type elim
     | Force Value
       -- ===Specific types===
-    | MatchBool Value { body : Computation } { body : Computation }
+    | MatchBool Value { computation : Computation } { computation : Computation }
       --===computation intro===
       -- function type intro
-    | Pop { var : ValueNameIntro, body : Computation }
+      -- TODO: Change from `ValueNameIntro` to `ValueName`?
+    | Pop { var : ValueNameIntro, computation : Computation }
       -- cartesian product intro
     | CartesianProductPair Computation Computation
     | UnitComputation
@@ -92,4 +94,5 @@ type Computation
     | First Computation
     | Second Computation
       -- return elim
-    | Sequence Computation { var : ValueNameIntro, body : Computation }
+      -- TODO: Change from `ValueNameIntro` to `ValueName`?
+    | Sequence Computation { var : ValueNameIntro, computation : Computation }
