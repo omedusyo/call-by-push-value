@@ -172,19 +172,14 @@ extractBool tvalue =
             Debug.todo "Value Error: expected a boolean value"
 
 
-extractFreeze : TypedValue -> TypedComputation
-extractFreeze tvalue =
-    case tvalue.type_ of
-        Calculus.Frozen computationType ->
-            case tvalue.value of
-                Calculus.Freeze computation ->
-                    typedComputation computation computationType
-
-                _ ->
-                    Debug.todo "Computation Error: expected a frozen computation"
+extractFreeze : Value -> Computation
+extractFreeze value =
+    case value of
+        Calculus.Freeze computation ->
+            computation
 
         _ ->
-            Debug.todo "Type Error: you are trying to access a binding of `Frozen` type"
+            Debug.todo "Computation Error: expected a frozen computation"
 
 
 
@@ -365,6 +360,13 @@ step currentComputation env stack =
 
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to project from a stack that wasn't pushed to"
+
+        Calculus.Force value ->
+            -- the value needs to be of the form: freeze(computation)
+            step
+                (extractFreeze value)
+                env
+                stack
 
         Calculus.Sequence computation0 body ->
             step
