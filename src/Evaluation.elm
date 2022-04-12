@@ -194,6 +194,8 @@ extractFreeze tvalue =
 type Stack
     = Nil
     | Push Value Stack
+    | First Stack
+    | Second Stack
 
 
 
@@ -331,6 +333,37 @@ step currentComputation env stack =
 
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to pop from a stack that wasn't pushed to"
+
+        Calculus.First nextComputation ->
+            step
+                nextComputation
+                env
+                (First stack)
+
+        Calculus.Second nextComputation ->
+            step
+                nextComputation
+                env
+                (Second stack)
+
+        Calculus.CartesianProductPair computation0 computation1 ->
+            -- This is fascinating... You don't just first evaluate `computation0` then `computation1`.
+            -- The stack has to contain the information that tells you which branch of the pair to evaluate
+            case stack of
+                First oldStack ->
+                    step
+                        computation0
+                        env
+                        oldStack
+
+                Second oldStack ->
+                    step
+                        computation1
+                        env
+                        oldStack
+
+                _ ->
+                    Debug.todo "Evaluation Error: You are trying to project from a stack that wasn't pushed to"
 
         _ ->
             Debug.todo ""
