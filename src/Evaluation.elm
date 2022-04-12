@@ -196,6 +196,7 @@ type Stack
     | Push Value Stack
     | First Stack
     | Second Stack
+    | Sequence { var : ValueName, computation : Computation } Stack
 
 
 
@@ -364,6 +365,23 @@ step currentComputation env stack =
 
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to project from a stack that wasn't pushed to"
+
+        Calculus.Sequence computation0 body ->
+            step
+                computation0
+                env
+                (Sequence body stack)
+
+        Calculus.Return value ->
+            case stack of
+                Sequence body oldStack ->
+                    step
+                        body.computation
+                        (env |> insertEnv body.var (typedValue value (env |> typeCheckValue value)))
+                        oldStack
+
+                _ ->
+                    Debug.todo "Evaluation Error: You are trying to return a value in a stack that wasn't sequenced"
 
         _ ->
             Debug.todo ""

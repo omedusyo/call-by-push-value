@@ -93,5 +93,4 @@ type Computation
     | First Computation
     | Second Computation
       -- return elim
-      -- TODO: Change from `ValueNameIntro` to `ValueName`?
-    | Sequence Computation { var : ValueNameIntro, computation : Computation }
+    | Sequence Computation { var : ValueName, computation : Computation }
