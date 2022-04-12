@@ -361,6 +361,9 @@ step currentComputation env stack =
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to project from a stack that wasn't pushed to"
 
+        Calculus.UnitComputation ->
+            Debug.todo "Evaluation Error: You are trying to execute a unit computation which is impossible"
+
         Calculus.Force value ->
             -- the value needs to be of the form: freeze(computation)
             step
