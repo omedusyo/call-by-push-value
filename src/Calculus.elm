@@ -71,8 +71,7 @@ type Computation
       -- tensor value type elim
       MatchTensorProduct Value { var0 : ValueName, var1 : ValueName, computation : Computation }
       -- sum type elim
-      -- TODO: Change from `ValueNameIntro` to `ValueName`?
-    | MatchSum Value { var : ValueNameIntro, computation : Computation } { var : ValueNameIntro, computation : Computation }
+    | MatchSum Value { var : ValueName, computation : Computation } { var : ValueName, computation : Computation }
     | MatchZero { body : Computation }
       -- freeze type elim
     | Force Value

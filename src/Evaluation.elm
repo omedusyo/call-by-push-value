@@ -105,6 +105,22 @@ extractTensor tvalue =
             Debug.todo "Type Error: you are trying to access a binding of `TensorProduct` type"
 
 
+extractSumFromValue : Value -> Env -> Either TypedValue TypedValue
+extractSumFromValue value env =
+    case value of
+        Calculus.ValueNameUse name ->
+            extractSum (env |> getEnv name)
+
+        Calculus.Left valueLeft _ ->
+            Left (typedValue valueLeft (env |> typeCheckValue valueLeft))
+
+        Calculus.Right _ valueRight ->
+            Right (typedValue valueRight (env |> typeCheckValue valueRight))
+
+        _ ->
+            Debug.todo "Extraction Error: you are trying to extract from a value of type `Sum`"
+
+
 extractSum : TypedValue -> Either TypedValue TypedValue
 extractSum tvalue =
     case tvalue.type_ of
@@ -185,12 +201,24 @@ typeCheckValue value env =
         Calculus.TensorProductPair value0 value1 ->
             Calculus.TensorProduct (env |> typeCheckValue value0) (env |> typeCheckValue value1)
 
-        _ ->
-            Debug.todo ""
+        Calculus.Left valueLeft typeRight ->
+            Calculus.ValueSum (env |> typeCheckValue valueLeft) typeRight
+
+        Calculus.Right typeLeft valueRight ->
+            Calculus.ValueSum typeLeft (env |> typeCheckValue valueRight)
+
+        Calculus.Freeze computation ->
+            Calculus.Frozen (env |> typeCheckComputation computation)
+
+        Calculus.TrueConstant ->
+            Calculus.BoolType
+
+        Calculus.FalseConstant ->
+            Calculus.BoolType
 
 
-typeCheckComputation : Env -> Computation -> ComputationType
-typeCheckComputation env computation =
+typeCheckComputation : Computation -> Env -> ComputationType
+typeCheckComputation computation env =
     Debug.todo ""
 
 
@@ -213,6 +241,24 @@ step currentComputation env stack =
                     |> insertEnv body.var1 typedValue1
                 )
                 stack
+
+        Calculus.MatchSum value bodyLeft bodyRight ->
+            case env |> extractSumFromValue value of
+                Left typedValueLeft ->
+                    step
+                        bodyLeft.computation
+                        (env
+                            |> insertEnv bodyLeft.var typedValueLeft
+                        )
+                        stack
+
+                Right typedValueRight ->
+                    step
+                        bodyRight.computation
+                        (env
+                            |> insertEnv bodyRight.var typedValueRight
+                        )
+                        stack
 
         _ ->
             Debug.todo ""
