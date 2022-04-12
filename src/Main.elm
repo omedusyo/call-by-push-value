@@ -2,6 +2,7 @@ module Main exposing (..)
 
 import Browser
 import Calculus
+import Evaluation
 import Example
 import Html.Styled as H exposing (Html)
 import Html.Styled.Attributes as HA

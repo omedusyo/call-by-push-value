@@ -35,6 +35,10 @@ typedComputation computation type_ =
     { computation = computation, type_ = type_ }
 
 
+
+-- TODO: I actually don't need to have the types for evaluation
+
+
 type alias Env =
     Dict ValueName (List TypedValue)
 
@@ -189,7 +193,11 @@ extractFreeze tvalue =
 
 type Stack
     = Nil
-    | RememberComputation ComputationWithHole Stack
+    | Push Value Stack
+
+
+
+-- TODO: delete this?
 
 
 type ComputationWithHole
@@ -233,9 +241,25 @@ typeCheckValue value env =
             Calculus.BoolType
 
 
+
+-- TODO: Here I'm using full Environment which is not necessary. Replace this with Context later
+
+
 typeCheckComputation : Computation -> Env -> ComputationType
 typeCheckComputation computation env =
-    Debug.todo ""
+    case computation of
+        Calculus.MatchTensorProduct value body ->
+            let
+                ( typedValue0, typedValue1 ) =
+                    extractTensor (typedValue value (env |> typeCheckValue value))
+            in
+            env
+                |> insertEnv body.var0 typedValue0
+                |> insertEnv body.var0 typedValue1
+                |> typeCheckComputation body.computation
+
+        _ ->
+            Debug.todo ""
 
 
 
@@ -289,6 +313,24 @@ step currentComputation env stack =
                         bodyRight.computation
                         env
                         stack
+
+        Calculus.Push value nextComputation ->
+            step
+                nextComputation
+                env
+                (Push value stack)
+
+        Calculus.Pop body ->
+            case stack of
+                Push value oldStack ->
+                    step
+                        body.computation
+                        -- TODO: The environment thingy is shady here.
+                        (env |> insertEnv body.var.name (typedValue value body.var.type_))
+                        oldStack
+
+                _ ->
+                    Debug.todo "Evaluation Error: You are trying to pop from a stack that wasn't pushed to"
 
         _ ->
             Debug.todo ""

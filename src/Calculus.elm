@@ -79,7 +79,7 @@ type Computation
     | MatchBool Value { computation : Computation } { computation : Computation }
       --===computation intro===
       -- function type intro
-      -- TODO: Change from `ValueNameIntro` to `ValueName`?
+      -- Note that this can't be just ValueName, otherwise we wouldn't be able to easily infer the type
     | Pop { var : ValueNameIntro, computation : Computation }
       -- cartesian product intro
     | CartesianProductPair Computation Computation
