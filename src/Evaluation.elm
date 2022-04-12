@@ -139,14 +139,30 @@ extractSum tvalue =
             Debug.todo "Type Error: you are trying to access a binding of `Sum` type"
 
 
-extractBool : TypedValue -> Either TypedValue TypedValue
+extractBoolFromValue : Value -> Env -> Either () ()
+extractBoolFromValue value env =
+    case value of
+        Calculus.ValueNameUse name ->
+            extractBool (env |> getEnv name)
+
+        Calculus.TrueConstant ->
+            Left ()
+
+        Calculus.FalseConstant ->
+            Right ()
+
+        _ ->
+            Debug.todo "Extraction Error: you are trying to extract from a value of type `Sum`"
+
+
+extractBool : TypedValue -> Either () ()
 extractBool tvalue =
     case tvalue.value of
         Calculus.TrueConstant ->
-            Left tvalue
+            Left ()
 
         Calculus.FalseConstant ->
-            Right tvalue
+            Right ()
 
         _ ->
             Debug.todo "Value Error: expected a boolean value"
@@ -258,6 +274,20 @@ step currentComputation env stack =
                         (env
                             |> insertEnv bodyRight.var typedValueRight
                         )
+                        stack
+
+        Calculus.MatchBool value bodyLeft bodyRight ->
+            case env |> extractBoolFromValue value of
+                Left () ->
+                    step
+                        bodyLeft.computation
+                        env
+                        stack
+
+                Right () ->
+                    step
+                        bodyRight.computation
+                        env
                         stack
 
         _ ->
