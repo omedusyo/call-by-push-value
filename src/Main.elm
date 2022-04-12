@@ -1,11 +1,11 @@
 module Main exposing (..)
 
 import Browser
+import Calculus
 import Example
 import Html.Styled as H exposing (Html)
 import Html.Styled.Attributes as HA
 import Html.Styled.Events as HE
-import Lambda
 import Lib.Html as H
 import Return exposing (Return)
 
@@ -43,19 +43,9 @@ update msg model =
 -- ===VIEW===
 
 
-row attrs html =
-    H.div ([ HA.style "display" "flex", HA.style "flex-direction" "row" ] ++ attrs)
-        html
-
-
-col attrs html =
-    H.div ([ HA.style "display" "flex", HA.style "flex-direction" "column" ] ++ attrs)
-        html
-
-
 view : Model -> Html Msg
 view model =
-    col []
+    H.column []
         [ H.div []
             [ H.text "hello, world" ]
         , H.button [ HE.onClick Step, HA.style "width" "60px" ] [ H.text "step" ]

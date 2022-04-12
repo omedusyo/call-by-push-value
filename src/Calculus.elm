@@ -1,4 +1,4 @@
-module Lambda exposing (..)
+module Calculus exposing (..)
 
 import Dict exposing (Dict)
 
@@ -46,7 +46,9 @@ type alias ValueName =
 
 
 type alias ValueNameIntro =
-    ( ValueName, ValueType )
+    { name : ValueName
+    , type_ : ValueType
+    }
 
 
 type Value

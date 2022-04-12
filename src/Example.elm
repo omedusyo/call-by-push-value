@@ -1,6 +1,6 @@
 module Example exposing (..)
 
-import Lambda exposing (..)
+import Calculus exposing (..)
 
 
 
@@ -14,7 +14,7 @@ import Lambda exposing (..)
 example0 =
     -- x <- pop;
     -- return(x)
-    Pop { var = ( "x", BoolType ), body = Return (ValueNameUse "x") }
+    Pop { var = { name = "x", type_ = BoolType }, body = Return (ValueNameUse "x") }
 
 
 
@@ -31,11 +31,11 @@ example0 =
 
 example1 =
     Pop
-        { var = ( "pair", TensorProduct BoolType BoolType )
+        { var = { name = "pair", type_ = TensorProduct BoolType BoolType }
         , body =
             MatchTensorProduct (ValueNameUse "pair")
-                { var0 = ( "x", BoolType )
-                , var1 = ( "y", BoolType )
+                { var0 = { name = "x", type_ = BoolType }
+                , var1 = { name = "y", type_ = BoolType }
                 , body =
                     MatchBool (ValueNameUse "x")
                         { body = Return (ValueNameUse "y") }
@@ -56,11 +56,11 @@ example1 =
 
 example2 =
     Pop
-        { var = ( "pair", TensorProduct BoolType BoolType )
+        { var = { name = "pair", type_ = TensorProduct BoolType BoolType }
         , body =
             MatchTensorProduct (ValueNameUse "pair")
-                { var0 = ( "x", BoolType )
-                , var1 = ( "y", BoolType )
+                { var0 = { name = "x", type_ = BoolType }
+                , var1 = { name = "y", type_ = BoolType }
                 , body =
                     MatchBool (ValueNameUse "x")
                         { body = Return TrueConstant }
@@ -81,7 +81,7 @@ example2 =
 
 example3 =
     Pop
-        { var = ( "b", BoolType )
+        { var = { name = "b", type_ = BoolType }
         , body =
             MatchBool (ValueNameUse "b")
                 { body = Return TrueConstant }
@@ -101,13 +101,13 @@ example3 =
 
 example4 =
     Pop
-        { var = ( "f", Frozen (Arrow (TensorProduct (AtomicValueType "A") (AtomicValueType "B")) (AtomicComputationType "T")) )
+        { var = { name = "f", type_ = Frozen (Arrow (TensorProduct (AtomicValueType "A") (AtomicValueType "B")) (AtomicComputationType "T")) }
         , body =
             Pop
-                { var = ( "a", AtomicValueType "A" )
+                { var = { name = "a", type_ = AtomicValueType "A" }
                 , body =
                     Pop
-                        { var = ( "b", AtomicValueType "B" )
+                        { var = { name = "b", type_ = AtomicValueType "B" }
                         , body =
                             Push
                                 (TensorProductPair (ValueNameUse "a") (ValueNameUse "b"))
