@@ -9,12 +9,54 @@ type Either a b
     | Right b
 
 
+type
+    TerminalValue
+    --Note that
+    --   1. There is no var use
+    --   2. The Frozen Values capture the environment
+    = -- tensor value type intro
+      TerminalTensorProductPair TerminalValue TerminalValue
+      -- sum type intro
+    | TerminalLeft TerminalValue ValueType -- Left val B := left(val: A) : A + B
+    | TerminalRight ValueType TerminalValue -- Right A val := right(val: B) : A + B
+      -- freeze type intro
+    | TerminalFreeze Env Computation
+      -- ===Specific types===
+    | TerminalTrueConstant
+    | TerminalFalseConstant
+
+
+valueToTerminalValue : Value -> Env -> TerminalValue
+valueToTerminalValue value env =
+    case value of
+        Calculus.ValueNameUse valueName ->
+            (env |> getEnv valueName).value
+
+        Calculus.TensorProductPair value0 value1 ->
+            TerminalTensorProductPair (env |> valueToTerminalValue value0) (env |> valueToTerminalValue value1)
+
+        Calculus.Left valueLeft typeRight ->
+            TerminalLeft (env |> valueToTerminalValue valueLeft) typeRight
+
+        Calculus.Right typeLeft valueRight ->
+            TerminalRight typeLeft (env |> valueToTerminalValue valueRight)
+
+        Calculus.Freeze computation ->
+            TerminalFreeze env computation
+
+        Calculus.TrueConstant ->
+            TerminalTrueConstant
+
+        Calculus.FalseConstant ->
+            TerminalFalseConstant
+
+
 
 -- ===Environments===
 
 
 type alias TypedValue =
-    { value : Value
+    { value : TerminalValue
     , type_ : ValueType
     }
 
@@ -25,7 +67,7 @@ type alias TypedComputation =
     }
 
 
-typedValue : Value -> ValueType -> TypedValue
+typedValue : TerminalValue -> ValueType -> TypedValue
 typedValue value type_ =
     { value = value, type_ = type_ }
 
@@ -79,15 +121,12 @@ getEnv valName env =
             Debug.todo (String.concat [ "Lookup Error: unknown value name `", valName, "`" ])
 
 
-extractTensorFromValue : Value -> Env -> ( TypedValue, TypedValue )
-extractTensorFromValue value env =
+extractTensorFromValue : TerminalValue -> ( TypedValue, TypedValue )
+extractTensorFromValue value =
     case value of
-        Calculus.ValueNameUse name ->
-            extractTensor (env |> getEnv name)
-
-        Calculus.TensorProductPair value0 value1 ->
-            ( typedValue value0 (env |> typeCheckValue value0)
-            , typedValue value1 (env |> typeCheckValue value1)
+        TerminalTensorProductPair value0 value1 ->
+            ( typedValue value0 (typeCheckTerminalValue value0)
+            , typedValue value1 (typeCheckTerminalValue value1)
             )
 
         _ ->
@@ -99,7 +138,7 @@ extractTensor tvalue =
     case tvalue.type_ of
         Calculus.TensorProduct type0 type1 ->
             case tvalue.value of
-                Calculus.TensorProductPair value0 value1 ->
+                TerminalTensorProductPair value0 value1 ->
                     ( typedValue value0 type0, typedValue value1 type1 )
 
                 _ ->
@@ -109,17 +148,14 @@ extractTensor tvalue =
             Debug.todo "Type Error: you are trying to access a binding of `TensorProduct` type"
 
 
-extractSumFromValue : Value -> Env -> Either TypedValue TypedValue
-extractSumFromValue value env =
+extractSumFromValue : TerminalValue -> Either TypedValue TypedValue
+extractSumFromValue value =
     case value of
-        Calculus.ValueNameUse name ->
-            extractSum (env |> getEnv name)
+        TerminalLeft valueLeft _ ->
+            Left (typedValue valueLeft (typeCheckTerminalValue valueLeft))
 
-        Calculus.Left valueLeft _ ->
-            Left (typedValue valueLeft (env |> typeCheckValue valueLeft))
-
-        Calculus.Right _ valueRight ->
-            Right (typedValue valueRight (env |> typeCheckValue valueRight))
+        TerminalRight _ valueRight ->
+            Right (typedValue valueRight (typeCheckTerminalValue valueRight))
 
         _ ->
             Debug.todo "Extraction Error: you are trying to extract from a value of type `Sum`"
@@ -130,10 +166,10 @@ extractSum tvalue =
     case tvalue.type_ of
         Calculus.ValueSum leftType rightType ->
             case tvalue.value of
-                Calculus.Left leftValue _ ->
+                TerminalLeft leftValue _ ->
                     Left (typedValue leftValue leftType)
 
-                Calculus.Right _ rightValue ->
+                TerminalRight _ rightValue ->
                     Right (typedValue rightValue rightType)
 
                 _ ->
@@ -162,10 +198,10 @@ extractBoolFromValue value env =
 extractBool : TypedValue -> Either () ()
 extractBool tvalue =
     case tvalue.value of
-        Calculus.TrueConstant ->
+        TerminalTrueConstant ->
             Left ()
 
-        Calculus.FalseConstant ->
+        TerminalFalseConstant ->
             Right ()
 
         _ ->
@@ -188,7 +224,7 @@ extractFreeze value =
 
 type Stack
     = Nil
-    | Push Value Stack
+    | Push TerminalValue Stack
     | First Stack
     | Second Stack
     | Sequence { var : ValueName, computation : Computation } Stack
@@ -210,29 +246,31 @@ type ComputationStep
 -- ===Type Checking===
 
 
-typeCheckValue : Value -> Env -> ValueType
-typeCheckValue value env =
+typeCheckTerminalValue : TerminalValue -> ValueType
+typeCheckTerminalValue value =
     case value of
-        Calculus.ValueNameUse valueName ->
-            (env |> getEnv valueName).type_
+        TerminalTensorProductPair value0 value1 ->
+            Calculus.TensorProduct (typeCheckTerminalValue value0) (typeCheckTerminalValue value1)
 
-        Calculus.TensorProductPair value0 value1 ->
-            Calculus.TensorProduct (env |> typeCheckValue value0) (env |> typeCheckValue value1)
+        TerminalLeft valueLeft typeRight ->
+            Calculus.ValueSum (typeCheckTerminalValue valueLeft) typeRight
 
-        Calculus.Left valueLeft typeRight ->
-            Calculus.ValueSum (env |> typeCheckValue valueLeft) typeRight
+        TerminalRight typeLeft valueRight ->
+            Calculus.ValueSum typeLeft (typeCheckTerminalValue valueRight)
 
-        Calculus.Right typeLeft valueRight ->
-            Calculus.ValueSum typeLeft (env |> typeCheckValue valueRight)
-
-        Calculus.Freeze computation ->
+        TerminalFreeze env computation ->
             Calculus.Frozen (env |> typeCheckComputation computation)
 
-        Calculus.TrueConstant ->
+        TerminalTrueConstant ->
             Calculus.BoolType
 
-        Calculus.FalseConstant ->
+        TerminalFalseConstant ->
             Calculus.BoolType
+
+
+typeCheckValue : Value -> Env -> ValueType
+typeCheckValue value env =
+    typeCheckTerminalValue (env |> valueToTerminalValue value)
 
 
 
@@ -245,7 +283,7 @@ typeCheckComputation computation env =
         Calculus.MatchTensorProduct value body ->
             let
                 ( typedValue0, typedValue1 ) =
-                    extractTensor (typedValue value (env |> typeCheckValue value))
+                    extractTensor (typedValue (env |> valueToTerminalValue value) (typeCheckTerminalValue (env |> valueToTerminalValue value)))
             in
             env
                 |> insertEnv body.var0 typedValue0
@@ -281,7 +319,7 @@ step ({ currentComputation, env, stack } as state) =
         Calculus.MatchTensorProduct value body ->
             let
                 ( typedValue0, typedValue1 ) =
-                    env |> extractTensorFromValue value
+                    extractTensorFromValue (env |> valueToTerminalValue value)
             in
             Active
                 (state
@@ -294,7 +332,7 @@ step ({ currentComputation, env, stack } as state) =
                 )
 
         Calculus.MatchSum value bodyLeft bodyRight ->
-            case env |> extractSumFromValue value of
+            case extractSumFromValue (env |> valueToTerminalValue value) of
                 Left typedValueLeft ->
                     Active
                         (state
@@ -320,6 +358,7 @@ step ({ currentComputation, env, stack } as state) =
             Debug.todo ""
 
         Calculus.Force value ->
+            -- TODO: You need to restore captured Environment
             -- the value needs to be of the form: freeze(computation)
             Active
                 (state
@@ -381,10 +420,15 @@ step ({ currentComputation, env, stack } as state) =
         Calculus.Return value ->
             case stack of
                 Sequence body oldStack ->
+                    let
+                        terminalValue =
+                            env |> valueToTerminalValue value
+                    in
                     Active
                         (state
                             |> do body.computation
-                            |> setEnvironment (env |> insertEnv body.var (typedValue value (env |> typeCheckValue value)))
+                            -- TODO: What about thunks?
+                            |> setEnvironment (env |> insertEnv body.var (typedValue terminalValue (typeCheckTerminalValue terminalValue)))
                             |> setStack oldStack
                         )
 
@@ -395,7 +439,7 @@ step ({ currentComputation, env, stack } as state) =
             Active
                 (state
                     |> do nextComputation
-                    |> setStack (Push value stack)
+                    |> setStack (Push (env |> valueToTerminalValue value) stack)
                 )
 
         Calculus.First nextComputation ->
