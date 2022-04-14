@@ -72,7 +72,7 @@ type Computation
       MatchTensorProduct Value { var0 : ValueName, var1 : ValueName, computation : Computation }
       -- sum type elim
     | MatchSum Value { var : ValueName, computation : Computation } { var : ValueName, computation : Computation }
-    | MatchZero { body : Computation }
+    | MatchZero { computation : Computation }
       -- freeze type elim
     | Force Value
       -- ===Specific types===

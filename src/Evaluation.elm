@@ -298,6 +298,17 @@ step currentComputation env stack =
                         )
                         stack
 
+        Calculus.MatchZero body ->
+            -- TODO
+            Debug.todo ""
+
+        Calculus.Force value ->
+            -- the value needs to be of the form: freeze(computation)
+            step
+                (extractFreeze value)
+                env
+                stack
+
         Calculus.MatchBool value bodyLeft bodyRight ->
             case env |> extractBoolFromValue value of
                 Left () ->
@@ -312,12 +323,6 @@ step currentComputation env stack =
                         env
                         stack
 
-        Calculus.Push value nextComputation ->
-            step
-                nextComputation
-                env
-                (Push value stack)
-
         Calculus.Pop body ->
             case stack of
                 Push value oldStack ->
@@ -329,18 +334,6 @@ step currentComputation env stack =
 
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to pop from a stack that wasn't pushed to"
-
-        Calculus.First nextComputation ->
-            step
-                nextComputation
-                env
-                (First stack)
-
-        Calculus.Second nextComputation ->
-            step
-                nextComputation
-                env
-                (Second stack)
 
         Calculus.CartesianProductPair computation0 computation1 ->
             -- This is fascinating... You don't just first evaluate `computation0` then `computation1`.
@@ -364,19 +357,6 @@ step currentComputation env stack =
         Calculus.UnitComputation ->
             Debug.todo "Evaluation Error: You are trying to execute a unit computation which is impossible"
 
-        Calculus.Force value ->
-            -- the value needs to be of the form: freeze(computation)
-            step
-                (extractFreeze value)
-                env
-                stack
-
-        Calculus.Sequence computation0 body ->
-            step
-                computation0
-                env
-                (Sequence body stack)
-
         Calculus.Return value ->
             case stack of
                 Sequence body oldStack ->
@@ -388,5 +368,26 @@ step currentComputation env stack =
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to return a value in a stack that wasn't sequenced"
 
-        _ ->
-            Debug.todo ""
+        Calculus.Push value nextComputation ->
+            step
+                nextComputation
+                env
+                (Push value stack)
+
+        Calculus.First nextComputation ->
+            step
+                nextComputation
+                env
+                (First stack)
+
+        Calculus.Second nextComputation ->
+            step
+                nextComputation
+                env
+                (Second stack)
+
+        Calculus.Sequence computation0 body ->
+            step
+                computation0
+                env
+                (Sequence body stack)
