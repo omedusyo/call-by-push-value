@@ -78,7 +78,7 @@ typedComputation computation type_ =
 
 
 
--- TODO: I actually don't need to have the types for evaluation
+-- I actually don't need to have the types for evaluation, but it will be easier to have the types when rendering
 
 
 type alias Env =
@@ -275,10 +275,6 @@ typeCheckValue value env =
     typeCheckTerminalValue (env |> valueToTerminalValue value)
 
 
-
--- TODO: Here I'm using full Environment which is not necessary. Replace this with Context later
-
-
 typeCheckComputation : Computation -> Env -> ComputationType
 typeCheckComputation computation env =
     case computation of
@@ -401,7 +397,6 @@ step ({ currentComputation, env, stack } as state) =
                     Active
                         (state
                             |> do body.computation
-                            -- TODO: The environment thingy is shady here.
                             |> setEnvironment (env |> insertEnv body.var.name (typedTerminalValue value body.var.type_))
                             |> setStack oldStack
                         )
