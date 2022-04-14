@@ -67,8 +67,8 @@ type alias TypedComputation =
     }
 
 
-typedValue : TerminalValue -> ValueType -> TypedTerminalValue
-typedValue value type_ =
+typedTerminalValue : TerminalValue -> ValueType -> TypedTerminalValue
+typedTerminalValue value type_ =
     { value = value, type_ = type_ }
 
 
@@ -129,8 +129,8 @@ extractTensorFromValue : TerminalValue -> ( TypedTerminalValue, TypedTerminalVal
 extractTensorFromValue value =
     case value of
         TerminalTensorProductPair value0 value1 ->
-            ( typedValue value0 (typeCheckTerminalValue value0)
-            , typedValue value1 (typeCheckTerminalValue value1)
+            ( typedTerminalValue value0 (typeCheckTerminalValue value0)
+            , typedTerminalValue value1 (typeCheckTerminalValue value1)
             )
 
         _ ->
@@ -143,7 +143,7 @@ extractTensor tvalue =
         Calculus.TensorProduct type0 type1 ->
             case tvalue.value of
                 TerminalTensorProductPair value0 value1 ->
-                    ( typedValue value0 type0, typedValue value1 type1 )
+                    ( typedTerminalValue value0 type0, typedTerminalValue value1 type1 )
 
                 _ ->
                     Debug.todo "Value Error: expected a tensor product of two values"
@@ -156,10 +156,10 @@ extractSumFromValue : TerminalValue -> Either TypedTerminalValue TypedTerminalVa
 extractSumFromValue value =
     case value of
         TerminalLeft valueLeft _ ->
-            Left (typedValue valueLeft (typeCheckTerminalValue valueLeft))
+            Left (typedTerminalValue valueLeft (typeCheckTerminalValue valueLeft))
 
         TerminalRight _ valueRight ->
-            Right (typedValue valueRight (typeCheckTerminalValue valueRight))
+            Right (typedTerminalValue valueRight (typeCheckTerminalValue valueRight))
 
         _ ->
             Debug.todo "Extraction Error: you are trying to extract from a value of type `Sum`"
@@ -171,10 +171,10 @@ extractSum tvalue =
         Calculus.ValueSum leftType rightType ->
             case tvalue.value of
                 TerminalLeft leftValue _ ->
-                    Left (typedValue leftValue leftType)
+                    Left (typedTerminalValue leftValue leftType)
 
                 TerminalRight _ rightValue ->
-                    Right (typedValue rightValue rightType)
+                    Right (typedTerminalValue rightValue rightType)
 
                 _ ->
                     Debug.todo "Value Error: expected `left val` or `right val`"
@@ -183,16 +183,13 @@ extractSum tvalue =
             Debug.todo "Type Error: you are trying to access a binding of `Sum` type"
 
 
-extractBoolFromValue : Value -> Env -> Either () ()
+extractBoolFromValue : TerminalValue -> Env -> Either () ()
 extractBoolFromValue value env =
     case value of
-        Calculus.ValueNameUse name ->
-            extractBool (env |> getEnv name)
-
-        Calculus.TrueConstant ->
+        TerminalTrueConstant ->
             Left ()
 
-        Calculus.FalseConstant ->
+        TerminalFalseConstant ->
             Right ()
 
         _ ->
@@ -212,11 +209,11 @@ extractBool tvalue =
             Debug.todo "Value Error: expected a boolean value"
 
 
-extractFreeze : Value -> Computation
+extractFreeze : TerminalValue -> ( Env, Computation )
 extractFreeze value =
     case value of
-        Calculus.Freeze computation ->
-            computation
+        TerminalFreeze env computation ->
+            ( env, computation )
 
         _ ->
             Debug.todo "Computation Error: expected a frozen computation"
@@ -243,7 +240,8 @@ type alias State =
 
 type ComputationStep
     = Active State
-    | Terminated State
+    | TerminatedWith TerminalValue State
+    | TerminalComputation Computation State
 
 
 
@@ -286,12 +284,12 @@ typeCheckComputation computation env =
     case computation of
         Calculus.MatchTensorProduct value body ->
             let
-                ( typedValue0, typedValue1 ) =
-                    extractTensor (typedValue (env |> valueToTerminalValue value) (typeCheckTerminalValue (env |> valueToTerminalValue value)))
+                ( typedTerminalValue0, typedTerminalValue1 ) =
+                    extractTensor (typedTerminalValue (env |> valueToTerminalValue value) (typeCheckTerminalValue (env |> valueToTerminalValue value)))
             in
             env
-                |> insertEnv body.var0 typedValue0
-                |> insertEnv body.var0 typedValue1
+                |> insertEnv body.var0 typedTerminalValue0
+                |> insertEnv body.var0 typedTerminalValue1
                 |> typeCheckComputation body.computation
 
         _ ->
@@ -322,7 +320,7 @@ step ({ currentComputation, env, stack } as state) =
     case currentComputation of
         Calculus.MatchTensorProduct value body ->
             let
-                ( typedValue0, typedValue1 ) =
+                ( typedTerminalValue0, typedTerminalValue1 ) =
                     extractTensorFromValue (env |> valueToTerminalValue value)
             in
             Active
@@ -330,30 +328,34 @@ step ({ currentComputation, env, stack } as state) =
                     |> do body.computation
                     |> setEnvironment
                         (env
-                            |> insertEnv body.var0 typedValue0
-                            |> insertEnv body.var1 typedValue1
+                            |> insertEnv body.var0 typedTerminalValue0
+                            |> insertEnv body.var1 typedTerminalValue1
                         )
                 )
 
         Calculus.MatchSum value bodyLeft bodyRight ->
-            case extractSumFromValue (env |> valueToTerminalValue value) of
-                Left typedValueLeft ->
+            let
+                terminalValue =
+                    env |> valueToTerminalValue value
+            in
+            case extractSumFromValue terminalValue of
+                Left typedTerminalValueLeft ->
                     Active
                         (state
                             |> do bodyLeft.computation
                             |> setEnvironment
                                 (env
-                                    |> insertEnv bodyLeft.var typedValueLeft
+                                    |> insertEnv bodyLeft.var typedTerminalValueLeft
                                 )
                         )
 
-                Right typedValueRight ->
+                Right typedTerminalValueRight ->
                     Active
                         (state
                             |> do bodyRight.computation
                             |> setEnvironment
                                 (env
-                                    |> insertEnv bodyRight.var typedValueRight
+                                    |> insertEnv bodyRight.var typedTerminalValueRight
                                 )
                         )
 
@@ -362,15 +364,25 @@ step ({ currentComputation, env, stack } as state) =
             Debug.todo ""
 
         Calculus.Force value ->
-            -- TODO: You need to restore captured Environment
-            -- the value needs to be of the form: freeze(computation)
+            let
+                terminalValue =
+                    env |> valueToTerminalValue value
+
+                ( oldEnv, computation ) =
+                    extractFreeze terminalValue
+            in
             Active
                 (state
-                    |> do (extractFreeze value)
+                    |> do computation
+                    |> setEnvironment oldEnv
                 )
 
         Calculus.MatchBool value bodyLeft bodyRight ->
-            case env |> extractBoolFromValue value of
+            let
+                terminalValue =
+                    env |> valueToTerminalValue value
+            in
+            case env |> extractBoolFromValue terminalValue of
                 Left () ->
                     Active
                         (state
@@ -390,7 +402,7 @@ step ({ currentComputation, env, stack } as state) =
                         (state
                             |> do body.computation
                             -- TODO: The environment thingy is shady here.
-                            |> setEnvironment (env |> insertEnv body.var.name (typedValue value body.var.type_))
+                            |> setEnvironment (env |> insertEnv body.var.name (typedTerminalValue value body.var.type_))
                             |> setStack oldStack
                         )
 
@@ -419,31 +431,37 @@ step ({ currentComputation, env, stack } as state) =
                     Debug.todo "Evaluation Error: You are trying to project from a stack that wasn't pushed to"
 
         Calculus.UnitComputation ->
-            Debug.todo "Evaluation Error: You are trying to execute a unit computation which is impossible"
+            TerminalComputation Calculus.UnitComputation state
 
         Calculus.Return value ->
+            let
+                terminalValue =
+                    env |> valueToTerminalValue value
+            in
             case stack of
-                Sequence capturedEnv body oldStack ->
-                    let
-                        terminalValue =
-                            env |> valueToTerminalValue value
-                    in
+                Sequence oldEnv body oldStack ->
                     Active
                         (state
                             |> do body.computation
-                            -- TODO: What about thunks?
-                            |> setEnvironment (env |> insertEnv body.var (typedValue terminalValue (typeCheckTerminalValue terminalValue)))
+                            |> setEnvironment (oldEnv |> insertEnv body.var (typedTerminalValue terminalValue (typeCheckTerminalValue terminalValue)))
                             |> setStack oldStack
                         )
+
+                Nil ->
+                    TerminatedWith terminalValue state
 
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to return a value in a stack that wasn't sequenced"
 
         Calculus.Push value nextComputation ->
+            let
+                terminalValue =
+                    env |> valueToTerminalValue value
+            in
             Active
                 (state
                     |> do nextComputation
-                    |> setStack (Push (env |> valueToTerminalValue value) stack)
+                    |> setStack (Push terminalValue stack)
                 )
 
         Calculus.First nextComputation ->
