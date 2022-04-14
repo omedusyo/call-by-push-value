@@ -55,7 +55,7 @@ valueToTerminalValue value env =
 -- ===Environments===
 
 
-type alias TypedValue =
+type alias TypedTerminalValue =
     { value : TerminalValue
     , type_ : ValueType
     }
@@ -67,7 +67,7 @@ type alias TypedComputation =
     }
 
 
-typedValue : TerminalValue -> ValueType -> TypedValue
+typedValue : TerminalValue -> ValueType -> TypedTerminalValue
 typedValue value type_ =
     { value = value, type_ = type_ }
 
@@ -82,7 +82,7 @@ typedComputation computation type_ =
 
 
 type alias Env =
-    Dict ValueName (List TypedValue)
+    Dict ValueName (List TypedTerminalValue)
 
 
 emptyEnv : Env
@@ -90,7 +90,7 @@ emptyEnv =
     Dict.empty
 
 
-insertEnv : ValueName -> TypedValue -> Env -> Env
+insertEnv : ValueName -> TypedTerminalValue -> Env -> Env
 insertEnv valueName tvalue env =
     env
         |> Dict.update valueName
@@ -104,14 +104,14 @@ insertEnv valueName tvalue env =
             )
 
 
-insertsEnv : List ( ValueName, TypedValue ) -> Env -> Env
+insertsEnv : List ( ValueName, TypedTerminalValue ) -> Env -> Env
 insertsEnv bindings env =
     List.foldl (\( varName, val ) envState -> insertEnv varName val envState)
         env
         bindings
 
 
-getEnv : ValueName -> Env -> TypedValue
+getEnv : ValueName -> Env -> TypedTerminalValue
 getEnv valName env =
     case env |> Dict.get valName |> Maybe.andThen List.head of
         Just tvalue ->
@@ -121,7 +121,11 @@ getEnv valName env =
             Debug.todo (String.concat [ "Lookup Error: unknown value name `", valName, "`" ])
 
 
-extractTensorFromValue : TerminalValue -> ( TypedValue, TypedValue )
+
+-- ===Extraction===
+
+
+extractTensorFromValue : TerminalValue -> ( TypedTerminalValue, TypedTerminalValue )
 extractTensorFromValue value =
     case value of
         TerminalTensorProductPair value0 value1 ->
@@ -133,7 +137,7 @@ extractTensorFromValue value =
             Debug.todo "Extraction Error: you are trying to extract from a value of type `TensorProduct`"
 
 
-extractTensor : TypedValue -> ( TypedValue, TypedValue )
+extractTensor : TypedTerminalValue -> ( TypedTerminalValue, TypedTerminalValue )
 extractTensor tvalue =
     case tvalue.type_ of
         Calculus.TensorProduct type0 type1 ->
@@ -148,7 +152,7 @@ extractTensor tvalue =
             Debug.todo "Type Error: you are trying to access a binding of `TensorProduct` type"
 
 
-extractSumFromValue : TerminalValue -> Either TypedValue TypedValue
+extractSumFromValue : TerminalValue -> Either TypedTerminalValue TypedTerminalValue
 extractSumFromValue value =
     case value of
         TerminalLeft valueLeft _ ->
@@ -161,7 +165,7 @@ extractSumFromValue value =
             Debug.todo "Extraction Error: you are trying to extract from a value of type `Sum`"
 
 
-extractSum : TypedValue -> Either TypedValue TypedValue
+extractSum : TypedTerminalValue -> Either TypedTerminalValue TypedTerminalValue
 extractSum tvalue =
     case tvalue.type_ of
         Calculus.ValueSum leftType rightType ->
@@ -195,7 +199,7 @@ extractBoolFromValue value env =
             Debug.todo "Extraction Error: you are trying to extract from a value of type `Sum`"
 
 
-extractBool : TypedValue -> Either () ()
+extractBool : TypedTerminalValue -> Either () ()
 extractBool tvalue =
     case tvalue.value of
         TerminalTrueConstant ->
@@ -227,7 +231,7 @@ type Stack
     | Push TerminalValue Stack
     | First Stack
     | Second Stack
-    | Sequence { var : ValueName, computation : Computation } Stack
+    | Sequence Env { var : ValueName, computation : Computation } Stack
 
 
 type alias State =
@@ -419,7 +423,7 @@ step ({ currentComputation, env, stack } as state) =
 
         Calculus.Return value ->
             case stack of
-                Sequence body oldStack ->
+                Sequence capturedEnv body oldStack ->
                     let
                         terminalValue =
                             env |> valueToTerminalValue value
@@ -460,5 +464,5 @@ step ({ currentComputation, env, stack } as state) =
             Active
                 (state
                     |> do computation0
-                    |> setStack (Sequence body stack)
+                    |> setStack (Sequence env body stack)
                 )
