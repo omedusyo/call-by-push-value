@@ -194,20 +194,16 @@ type Stack
     | Sequence { var : ValueName, computation : Computation } Stack
 
 
-
--- TODO: delete this?
-
-
-type ComputationWithHole
-    = MatchTensorProduct { var0 : ValueNameIntro, var1 : ValueNameIntro, body : Computation }
-    | MatchSum { var : ValueNameIntro, body : Computation } { var : ValueNameIntro, body : Computation }
-
-
 type alias State =
     { env : Env
     , stack : Stack
     , currentComputation : Computation
     }
+
+
+type ComputationStep
+    = Active State
+    | Terminated State
 
 
 
@@ -264,39 +260,60 @@ typeCheckComputation computation env =
 -- ===Small Step Evaluator===
 
 
-step : Computation -> Env -> Stack -> State
-step currentComputation env stack =
+do : Computation -> State -> State
+do computation state =
+    { state | currentComputation = computation }
+
+
+setEnvironment : Env -> State -> State
+setEnvironment env state =
+    { state | env = env }
+
+
+setStack : Stack -> State -> State
+setStack stack state =
+    { state | stack = stack }
+
+
+step : State -> ComputationStep
+step ({ currentComputation, env, stack } as state) =
     case currentComputation of
         Calculus.MatchTensorProduct value body ->
             let
                 ( typedValue0, typedValue1 ) =
                     env |> extractTensorFromValue value
             in
-            step
-                body.computation
-                (env
-                    |> insertEnv body.var0 typedValue0
-                    |> insertEnv body.var1 typedValue1
+            Active
+                (state
+                    |> do body.computation
+                    |> setEnvironment
+                        (env
+                            |> insertEnv body.var0 typedValue0
+                            |> insertEnv body.var1 typedValue1
+                        )
                 )
-                stack
 
         Calculus.MatchSum value bodyLeft bodyRight ->
             case env |> extractSumFromValue value of
                 Left typedValueLeft ->
-                    step
-                        bodyLeft.computation
-                        (env
-                            |> insertEnv bodyLeft.var typedValueLeft
+                    Active
+                        (state
+                            |> do bodyLeft.computation
+                            |> setEnvironment
+                                (env
+                                    |> insertEnv bodyLeft.var typedValueLeft
+                                )
                         )
-                        stack
 
                 Right typedValueRight ->
-                    step
-                        bodyRight.computation
-                        (env
-                            |> insertEnv bodyRight.var typedValueRight
+                    Active
+                        (state
+                            |> do bodyRight.computation
+                            |> setEnvironment
+                                (env
+                                    |> insertEnv bodyRight.var typedValueRight
+                                )
                         )
-                        stack
 
         Calculus.MatchZero body ->
             -- TODO
@@ -304,33 +321,35 @@ step currentComputation env stack =
 
         Calculus.Force value ->
             -- the value needs to be of the form: freeze(computation)
-            step
-                (extractFreeze value)
-                env
-                stack
+            Active
+                (state
+                    |> do (extractFreeze value)
+                )
 
         Calculus.MatchBool value bodyLeft bodyRight ->
             case env |> extractBoolFromValue value of
                 Left () ->
-                    step
-                        bodyLeft.computation
-                        env
-                        stack
+                    Active
+                        (state
+                            |> do bodyLeft.computation
+                        )
 
                 Right () ->
-                    step
-                        bodyRight.computation
-                        env
-                        stack
+                    Active
+                        (state
+                            |> do bodyRight.computation
+                        )
 
         Calculus.Pop body ->
             case stack of
                 Push value oldStack ->
-                    step
-                        body.computation
-                        -- TODO: The environment thingy is shady here.
-                        (env |> insertEnv body.var.name (typedValue value body.var.type_))
-                        oldStack
+                    Active
+                        (state
+                            |> do body.computation
+                            -- TODO: The environment thingy is shady here.
+                            |> setEnvironment (env |> insertEnv body.var.name (typedValue value body.var.type_))
+                            |> setStack oldStack
+                        )
 
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to pop from a stack that wasn't pushed to"
@@ -340,16 +359,18 @@ step currentComputation env stack =
             -- The stack has to contain the information that tells you which branch of the pair to evaluate
             case stack of
                 First oldStack ->
-                    step
-                        computation0
-                        env
-                        oldStack
+                    Active
+                        (state
+                            |> do computation0
+                            |> setStack oldStack
+                        )
 
                 Second oldStack ->
-                    step
-                        computation1
-                        env
-                        oldStack
+                    Active
+                        (state
+                            |> do computation1
+                            |> setStack oldStack
+                        )
 
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to project from a stack that wasn't pushed to"
@@ -360,34 +381,40 @@ step currentComputation env stack =
         Calculus.Return value ->
             case stack of
                 Sequence body oldStack ->
-                    step
-                        body.computation
-                        (env |> insertEnv body.var (typedValue value (env |> typeCheckValue value)))
-                        oldStack
+                    Active
+                        (state
+                            |> do body.computation
+                            |> setEnvironment (env |> insertEnv body.var (typedValue value (env |> typeCheckValue value)))
+                            |> setStack oldStack
+                        )
 
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to return a value in a stack that wasn't sequenced"
 
         Calculus.Push value nextComputation ->
-            step
-                nextComputation
-                env
-                (Push value stack)
+            Active
+                (state
+                    |> do nextComputation
+                    |> setStack (Push value stack)
+                )
 
         Calculus.First nextComputation ->
-            step
-                nextComputation
-                env
-                (First stack)
+            Active
+                (state
+                    |> do nextComputation
+                    |> setStack (First stack)
+                )
 
         Calculus.Second nextComputation ->
-            step
-                nextComputation
-                env
-                (Second stack)
+            Active
+                (state
+                    |> do nextComputation
+                    |> setStack (Second stack)
+                )
 
         Calculus.Sequence computation0 body ->
-            step
-                computation0
-                env
-                (Sequence body stack)
+            Active
+                (state
+                    |> do computation0
+                    |> setStack (Sequence body stack)
+                )
