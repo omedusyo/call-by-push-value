@@ -83,7 +83,7 @@ type Computation
     | Pop { var : ValueNameIntro, computation : Computation }
       -- cartesian product intro
     | CartesianProductPair Computation Computation
-    | UnitComputation -- TODO: Does this make sense?
+    | UnitComputation
       -- return intro
     | Return Value
       --===computation elim===

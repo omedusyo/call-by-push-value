@@ -1,7 +1,10 @@
 module Evaluation exposing (..)
 
 import Calculus exposing (Computation, ComputationType, Value, ValueName, ValueNameIntro, ValueType)
+import Context exposing (Context)
 import Dict exposing (Dict)
+import Environment as Env exposing (Env, TerminalValue(..), TypedTerminalValue)
+import TypeExtraction
 
 
 type Either a b
@@ -9,182 +12,37 @@ type Either a b
     | Right b
 
 
-type
-    TerminalValue
-    --Note that
-    --   1. There is no var use
-    --   2. The Frozen Values capture the environment
-    = -- tensor value type intro
-      TerminalTensorProductPair TerminalValue TerminalValue
-      -- sum type intro
-    | TerminalLeft TerminalValue ValueType -- Left val B := left(val: A) : A + B
-    | TerminalRight ValueType TerminalValue -- Right A val := right(val: B) : A + B
-      -- freeze type intro
-    | TerminalFreeze Env Computation
-      -- ===Specific types===
-    | TerminalTrueConstant
-    | TerminalFalseConstant
-
-
-valueToTerminalValue : Value -> Env -> TerminalValue
-valueToTerminalValue value env =
-    case value of
-        Calculus.ValueNameUse valueName ->
-            (env |> getEnv valueName).value
-
-        Calculus.TensorProductPair value0 value1 ->
-            TerminalTensorProductPair (env |> valueToTerminalValue value0) (env |> valueToTerminalValue value1)
-
-        Calculus.Left valueLeft typeRight ->
-            TerminalLeft (env |> valueToTerminalValue valueLeft) typeRight
-
-        Calculus.Right typeLeft valueRight ->
-            TerminalRight typeLeft (env |> valueToTerminalValue valueRight)
-
-        Calculus.Freeze computation ->
-            TerminalFreeze env computation
-
-        Calculus.TrueConstant ->
-            TerminalTrueConstant
-
-        Calculus.FalseConstant ->
-            TerminalFalseConstant
-
-
-
--- ===Environments===
-
-
-type alias TypedTerminalValue =
-    { value : TerminalValue
-    , type_ : ValueType
-    }
-
-
-type alias TypedComputation =
-    { computation : Computation
-    , type_ : ComputationType
-    }
-
-
-typedTerminalValue : TerminalValue -> ValueType -> TypedTerminalValue
-typedTerminalValue value type_ =
-    { value = value, type_ = type_ }
-
-
-typedComputation : Computation -> ComputationType -> TypedComputation
-typedComputation computation type_ =
-    { computation = computation, type_ = type_ }
-
-
-
--- I actually don't need to have the types for evaluation, but it will be easier to have the types when rendering
-
-
-type alias Env =
-    Dict ValueName (List TypedTerminalValue)
-
-
-emptyEnv : Env
-emptyEnv =
-    Dict.empty
-
-
-insertEnv : ValueName -> TypedTerminalValue -> Env -> Env
-insertEnv valueName tvalue env =
-    env
-        |> Dict.update valueName
-            (\maybeValues ->
-                case maybeValues of
-                    Just values ->
-                        Just (tvalue :: values)
-
-                    Nothing ->
-                        Just [ tvalue ]
-            )
-
-
-insertsEnv : List ( ValueName, TypedTerminalValue ) -> Env -> Env
-insertsEnv bindings env =
-    List.foldl (\( varName, val ) envState -> insertEnv varName val envState)
-        env
-        bindings
-
-
-getEnv : ValueName -> Env -> TypedTerminalValue
-getEnv valName env =
-    case env |> Dict.get valName |> Maybe.andThen List.head of
-        Just tvalue ->
-            tvalue
-
-        Nothing ->
-            Debug.todo (String.concat [ "Lookup Error: unknown value name `", valName, "`" ])
-
-
 
 -- ===Extraction===
 
 
-extractTensorFromValue : TerminalValue -> ( TypedTerminalValue, TypedTerminalValue )
-extractTensorFromValue value =
+extractTensorFromTerminalValue : TerminalValue -> ( TypedTerminalValue, TypedTerminalValue )
+extractTensorFromTerminalValue value =
     case value of
         TerminalTensorProductPair value0 value1 ->
-            ( typedTerminalValue value0 (typeCheckTerminalValue value0)
-            , typedTerminalValue value1 (typeCheckTerminalValue value1)
+            ( Env.typedTerminalValue value0 (TypeExtraction.terminalValueToType value0)
+            , Env.typedTerminalValue value1 (TypeExtraction.terminalValueToType value1)
             )
 
         _ ->
             Debug.todo "Extraction Error: you are trying to extract from a value of type `TensorProduct`"
 
 
-extractTensor : TypedTerminalValue -> ( TypedTerminalValue, TypedTerminalValue )
-extractTensor tvalue =
-    case tvalue.type_ of
-        Calculus.TensorProduct type0 type1 ->
-            case tvalue.value of
-                TerminalTensorProductPair value0 value1 ->
-                    ( typedTerminalValue value0 type0, typedTerminalValue value1 type1 )
-
-                _ ->
-                    Debug.todo "Value Error: expected a tensor product of two values"
-
-        _ ->
-            Debug.todo "Type Error: you are trying to access a binding of `TensorProduct` type"
-
-
-extractSumFromValue : TerminalValue -> Either TypedTerminalValue TypedTerminalValue
-extractSumFromValue value =
+extractSumFromTerminalValue : TerminalValue -> Either TypedTerminalValue TypedTerminalValue
+extractSumFromTerminalValue value =
     case value of
         TerminalLeft valueLeft _ ->
-            Left (typedTerminalValue valueLeft (typeCheckTerminalValue valueLeft))
+            Left (Env.typedTerminalValue valueLeft (TypeExtraction.terminalValueToType valueLeft))
 
         TerminalRight _ valueRight ->
-            Right (typedTerminalValue valueRight (typeCheckTerminalValue valueRight))
+            Right (Env.typedTerminalValue valueRight (TypeExtraction.terminalValueToType valueRight))
 
         _ ->
             Debug.todo "Extraction Error: you are trying to extract from a value of type `Sum`"
 
 
-extractSum : TypedTerminalValue -> Either TypedTerminalValue TypedTerminalValue
-extractSum tvalue =
-    case tvalue.type_ of
-        Calculus.ValueSum leftType rightType ->
-            case tvalue.value of
-                TerminalLeft leftValue _ ->
-                    Left (typedTerminalValue leftValue leftType)
-
-                TerminalRight _ rightValue ->
-                    Right (typedTerminalValue rightValue rightType)
-
-                _ ->
-                    Debug.todo "Value Error: expected `left val` or `right val`"
-
-        _ ->
-            Debug.todo "Type Error: you are trying to access a binding of `Sum` type"
-
-
-extractBoolFromValue : TerminalValue -> Env -> Either () ()
-extractBoolFromValue value env =
+extractBoolFromTerminalValue : TerminalValue -> Either () ()
+extractBoolFromTerminalValue value =
     case value of
         TerminalTrueConstant ->
             Left ()
@@ -193,24 +51,11 @@ extractBoolFromValue value env =
             Right ()
 
         _ ->
-            Debug.todo "Extraction Error: you are trying to extract from a value of type `Sum`"
+            Debug.todo "Extraction Error: you are trying to extract from a value of type `Bool`"
 
 
-extractBool : TypedTerminalValue -> Either () ()
-extractBool tvalue =
-    case tvalue.value of
-        TerminalTrueConstant ->
-            Left ()
-
-        TerminalFalseConstant ->
-            Right ()
-
-        _ ->
-            Debug.todo "Value Error: expected a boolean value"
-
-
-extractFreeze : TerminalValue -> ( Env, Computation )
-extractFreeze value =
+extractFreezeFromTerminalValue : TerminalValue -> ( Env, Computation )
+extractFreezeFromTerminalValue value =
     case value of
         TerminalFreeze env computation ->
             ( env, computation )
@@ -245,54 +90,6 @@ type ComputationStep
 
 
 
--- ===Type Checking===
-
-
-typeCheckTerminalValue : TerminalValue -> ValueType
-typeCheckTerminalValue value =
-    case value of
-        TerminalTensorProductPair value0 value1 ->
-            Calculus.TensorProduct (typeCheckTerminalValue value0) (typeCheckTerminalValue value1)
-
-        TerminalLeft valueLeft typeRight ->
-            Calculus.ValueSum (typeCheckTerminalValue valueLeft) typeRight
-
-        TerminalRight typeLeft valueRight ->
-            Calculus.ValueSum typeLeft (typeCheckTerminalValue valueRight)
-
-        TerminalFreeze env computation ->
-            Calculus.Frozen (env |> typeCheckComputation computation)
-
-        TerminalTrueConstant ->
-            Calculus.BoolType
-
-        TerminalFalseConstant ->
-            Calculus.BoolType
-
-
-typeCheckValue : Value -> Env -> ValueType
-typeCheckValue value env =
-    typeCheckTerminalValue (env |> valueToTerminalValue value)
-
-
-typeCheckComputation : Computation -> Env -> ComputationType
-typeCheckComputation computation env =
-    case computation of
-        Calculus.MatchTensorProduct value body ->
-            let
-                ( typedTerminalValue0, typedTerminalValue1 ) =
-                    extractTensor (typedTerminalValue (env |> valueToTerminalValue value) (typeCheckTerminalValue (env |> valueToTerminalValue value)))
-            in
-            env
-                |> insertEnv body.var0 typedTerminalValue0
-                |> insertEnv body.var0 typedTerminalValue1
-                |> typeCheckComputation body.computation
-
-        _ ->
-            Debug.todo ""
-
-
-
 -- ===Small Step Evaluator===
 
 
@@ -317,31 +114,31 @@ step ({ currentComputation, env, stack } as state) =
         Calculus.MatchTensorProduct value body ->
             let
                 ( typedTerminalValue0, typedTerminalValue1 ) =
-                    extractTensorFromValue (env |> valueToTerminalValue value)
+                    extractTensorFromTerminalValue (env |> Env.valueToTerminalValue value)
             in
             Active
                 (state
                     |> do body.computation
                     |> setEnvironment
                         (env
-                            |> insertEnv body.var0 typedTerminalValue0
-                            |> insertEnv body.var1 typedTerminalValue1
+                            |> Env.insert body.var0 typedTerminalValue0
+                            |> Env.insert body.var1 typedTerminalValue1
                         )
                 )
 
         Calculus.MatchSum value bodyLeft bodyRight ->
             let
                 terminalValue =
-                    env |> valueToTerminalValue value
+                    env |> Env.valueToTerminalValue value
             in
-            case extractSumFromValue terminalValue of
+            case extractSumFromTerminalValue terminalValue of
                 Left typedTerminalValueLeft ->
                     Active
                         (state
                             |> do bodyLeft.computation
                             |> setEnvironment
                                 (env
-                                    |> insertEnv bodyLeft.var typedTerminalValueLeft
+                                    |> Env.insert bodyLeft.var typedTerminalValueLeft
                                 )
                         )
 
@@ -351,7 +148,7 @@ step ({ currentComputation, env, stack } as state) =
                             |> do bodyRight.computation
                             |> setEnvironment
                                 (env
-                                    |> insertEnv bodyRight.var typedTerminalValueRight
+                                    |> Env.insert bodyRight.var typedTerminalValueRight
                                 )
                         )
 
@@ -362,10 +159,10 @@ step ({ currentComputation, env, stack } as state) =
         Calculus.Force value ->
             let
                 terminalValue =
-                    env |> valueToTerminalValue value
+                    env |> Env.valueToTerminalValue value
 
                 ( oldEnv, computation ) =
-                    extractFreeze terminalValue
+                    extractFreezeFromTerminalValue terminalValue
             in
             Active
                 (state
@@ -376,9 +173,9 @@ step ({ currentComputation, env, stack } as state) =
         Calculus.MatchBool value bodyLeft bodyRight ->
             let
                 terminalValue =
-                    env |> valueToTerminalValue value
+                    env |> Env.valueToTerminalValue value
             in
-            case env |> extractBoolFromValue terminalValue of
+            case extractBoolFromTerminalValue terminalValue of
                 Left () ->
                     Active
                         (state
@@ -397,9 +194,12 @@ step ({ currentComputation, env, stack } as state) =
                     Active
                         (state
                             |> do body.computation
-                            |> setEnvironment (env |> insertEnv body.var.name (typedTerminalValue value body.var.type_))
+                            |> setEnvironment (env |> Env.insert body.var.name (Env.typedTerminalValue value body.var.type_))
                             |> setStack oldStack
                         )
+
+                Nil ->
+                    TerminalComputation currentComputation state
 
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to pop from a stack that wasn't pushed to"
@@ -422,23 +222,26 @@ step ({ currentComputation, env, stack } as state) =
                             |> setStack oldStack
                         )
 
+                Nil ->
+                    TerminalComputation currentComputation state
+
                 _ ->
                     Debug.todo "Evaluation Error: You are trying to project from a stack that wasn't pushed to"
 
         Calculus.UnitComputation ->
-            TerminalComputation Calculus.UnitComputation state
+            TerminalComputation currentComputation state
 
         Calculus.Return value ->
             let
                 terminalValue =
-                    env |> valueToTerminalValue value
+                    env |> Env.valueToTerminalValue value
             in
             case stack of
                 Sequence oldEnv body oldStack ->
                     Active
                         (state
                             |> do body.computation
-                            |> setEnvironment (oldEnv |> insertEnv body.var (typedTerminalValue terminalValue (typeCheckTerminalValue terminalValue)))
+                            |> setEnvironment (oldEnv |> Env.insert body.var (Env.typedTerminalValue terminalValue (TypeExtraction.terminalValueToType terminalValue)))
                             |> setStack oldStack
                         )
 
@@ -451,7 +254,7 @@ step ({ currentComputation, env, stack } as state) =
         Calculus.Push value nextComputation ->
             let
                 terminalValue =
-                    env |> valueToTerminalValue value
+                    env |> Env.valueToTerminalValue value
             in
             Active
                 (state
