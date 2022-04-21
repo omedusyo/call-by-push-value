@@ -33,6 +33,8 @@ type ComputationType
     | Arrow ValueType ComputationType
     | -- free : Value -> Computation
       Returns ValueType
+    | -- streams
+      Stream ComputationType
       -- ===Specific types===
     | AtomicComputationType TypeName
 
@@ -84,6 +86,8 @@ type Computation
       -- cartesian product intro
     | CartesianProductPair Computation Computation
     | UnitComputation
+      -- stream intro
+    | StreamGenerator Value { var : ValueName, headComputation : Computation, tailComputation : Computation }
       -- return intro
     | Return Value
       --===computation elim===
@@ -94,3 +98,6 @@ type Computation
     | Second Computation
       -- return elim
     | Sequence Computation { var : ValueName, computation : Computation }
+      -- stream elim
+    | Head Computation
+    | Tail Computation

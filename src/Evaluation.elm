@@ -74,6 +74,9 @@ type Stack
     | First Stack
     | Second Stack
     | Sequence Env { var : ValueName, computation : Computation } Stack
+    | Head Stack
+    | Tail Stack
+    | Stream Env { var : ValueName, headComputation : Computation, tailComputation : Computation } Stack
 
 
 type alias State =
@@ -231,6 +234,37 @@ step ({ currentComputation, env, stack } as state) =
         Calculus.UnitComputation ->
             TerminalComputation currentComputation state
 
+        Calculus.StreamGenerator value body ->
+            let
+                terminalValue =
+                    env |> Env.valueToTerminalValue value
+
+                typedTerminalValue =
+                    Env.typedTerminalValue terminalValue (TypeExtraction.terminalValueToType terminalValue)
+            in
+            case stack of
+                Head oldStack ->
+                    Active
+                        (state
+                            |> do body.headComputation
+                            |> setEnvironment (env |> Env.insert body.var typedTerminalValue)
+                            |> setStack oldStack
+                        )
+
+                Tail oldStack ->
+                    Active
+                        (state
+                            |> do body.tailComputation
+                            |> setEnvironment (env |> Env.insert body.var typedTerminalValue)
+                            |> setStack (Stream env body oldStack)
+                        )
+
+                Nil ->
+                    TerminalComputation currentComputation state
+
+                _ ->
+                    Debug.todo "Evaluation Error: You are trying to access a stream from a stack that wasn't pushed to"
+
         Calculus.Return value ->
             let
                 terminalValue =
@@ -242,6 +276,17 @@ step ({ currentComputation, env, stack } as state) =
                         (state
                             |> do body.computation
                             |> setEnvironment (oldEnv |> Env.insert body.var (Env.typedTerminalValue terminalValue (TypeExtraction.terminalValueToType terminalValue)))
+                            |> setStack oldStack
+                        )
+
+                -- TODO: This is really weird
+                --       We're in a return branch, and yet we're dealing with streams.
+                --       Would be nice to have a definition of streams that doesn't depend on Return type
+                Stream oldEnv body oldStack ->
+                    Active
+                        (state
+                            |> do (Calculus.StreamGenerator value body)
+                            |> setEnvironment oldEnv
                             |> setStack oldStack
                         )
 
@@ -281,4 +326,18 @@ step ({ currentComputation, env, stack } as state) =
                 (state
                     |> do computation0
                     |> setStack (Sequence env body stack)
+                )
+
+        Calculus.Head nextComputation ->
+            Active
+                (state
+                    |> do nextComputation
+                    |> setStack (Head stack)
+                )
+
+        Calculus.Tail nextComputation ->
+            Active
+                (state
+                    |> do nextComputation
+                    |> setStack (Tail stack)
                 )
